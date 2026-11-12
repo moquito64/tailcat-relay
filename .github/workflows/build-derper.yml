@@ -1,4 +1,4 @@
-name: build tailwag-derper
+name: build tailcat-relay
 
 on:
   push:
@@ -33,7 +33,7 @@ jobs:
           push: true
           build-args: TAILSCALE_VERSION=${{ steps.v.outputs.tailscale }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/tailwag-derper:${{ steps.v.outputs.tailscale }}
-            ghcr.io/${{ github.repository_owner }}/tailwag-derper:latest
+            ghcr.io/${{ github.repository_owner }}/tailcat-relay:${{ steps.v.outputs.tailscale }}
+            ghcr.io/${{ github.repository_owner }}/tailcat-relay:latest
 
 # The package must stay public: the VM's startup script pulls anonymously.

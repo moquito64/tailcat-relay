@@ -1,5 +1,5 @@
-# tailwag-derper — container build of Tailscale's DERP relay
-# (cmd/derper, from the tailscale.com module), used as tailwag's
+# tailcat-relay — container build of Tailscale's DERP relay
+# (cmd/derper, from the tailscale.com module), used as our tailcat
 # break-glass rendezvous/relay node. BSD-3-Clause upstream.
 # Upstream publishes no derper image or packages, so we build the pinned tag.
 

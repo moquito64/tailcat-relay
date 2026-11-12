@@ -34,5 +34,5 @@ jobs:
             ```
             Before merging: read https://github.com/tailscale/tailcat/blob/main/CHANGELOG.md
             (no stability guarantees). After merge: wait for the build workflow, then
-            `sudo /opt/tailwag-derper/docker/deploy.sh` on the VM, and bump tailwag on
+            `sudo /opt/tailwag-derper/docker/deploy.sh` on the VM, and bump tailcat on
             the nodes and the client to the same tailcat version.

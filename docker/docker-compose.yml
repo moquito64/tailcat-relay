@@ -4,7 +4,7 @@ name: tailcat
 
 services:
   derper:
-    image: ghcr.io/moquito64/tailwag-derper:${TAILSCALE_VERSION}
+    image: ghcr.io/moquito64/tailcat-relay:${TAILSCALE_VERSION}
     container_name: derper
     restart: unless-stopped
     # host networking: derper/STUN want the real client source IP:port and
@@ -23,7 +23,7 @@ services:
       - --stun=true
       - --derp=true
       # tailcat peers aren't tailnet nodes, so there's nothing to verify against;
-      # the gate is --allow=nodekey:... on each tailwag server. DERP only sees
+      # the gate is --allow=nodekey:... on each tailcat node. DERP only sees
       # WireGuard-encrypted packets.
       - --verify-clients=false
 

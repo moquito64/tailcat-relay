@@ -4,7 +4,7 @@
 #   ./update.sh --check  only report
 # tailcat has no stability guarantees (CLI/Go API/wire format) -- read
 # https://github.com/tailscale/tailcat/blob/main/CHANGELOG.md before merging,
-# and bump the tailwag nodes (wart, ...) and client to the same version.
+# and bump the tailcat nodes (wart, ...) and client to the same version.
 set -euo pipefail
 cd "$(dirname "$0")"
 env=docker/.env
