@@ -1,0 +1,38 @@
+name: check for tailcat / derper updates
+
+on:
+  schedule:
+    - cron: "17 18 * * 1"   # Mondays 08:17 HST
+  workflow_dispatch: {}
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - id: bump
+        run: |
+          ./update.sh | tee /tmp/versions.txt
+          {
+            echo "summary<<VERSIONS"
+            cat /tmp/versions.txt
+            echo "VERSIONS"
+          } >> "$GITHUB_OUTPUT"
+      # Needs Settings -> Actions -> General -> "Allow GitHub Actions to create
+      # and approve pull requests". No PR is opened when nothing changed.
+      - uses: peter-evans/create-pull-request@v7
+        with:
+          branch: bump-versions
+          commit-message: "bump tailcat/derper pins"
+          title: "Bump tailcat / derper versions"
+          body: |
+            ```
+            ${{ steps.bump.outputs.summary }}
+            ```
+            Before merging: read https://github.com/tailscale/tailcat/blob/main/CHANGELOG.md
+            (no stability guarantees). After merge: wait for the build workflow, then
+            `sudo /opt/tailwag-derper/docker/deploy.sh` on the VM, and bump tailwag on
+            the nodes and the client to the same tailcat version.

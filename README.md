@@ -1,56 +1,70 @@
 # tailwag-derper
 
-Standalone DERP relay for tailwag's break-glass path. Deliberately outside
-Camelot's management plane — no Komodo, no Semaphore, no NetBird dependency.
-Provisioned by hand from Terraform run locally, updated via GitHub Actions,
-not via anything self-hosted.
+Standalone DERP relay for tailwag's break-glass path, at `wag.penwulf.com`.
+Deliberately outside Camelot's management plane — no Komodo, no Semaphore,
+no NetBird dependency. Provisioned by hand from OpenTofu run locally, built
+by GitHub Actions, not by anything self-hosted.
+
+The VM also runs a tailcat server of its own (`serve 22`), so the relay VM is
+reachable through a tailcat tunnel too; its real sshd still does normal SSH auth.
 
 ## Layout
 
 - `terraform/` — GCP e2-micro VM (Always Free eligible), static external IP,
   firewall rules (80/tcp, 443/tcp, 3478/udp, 22/tcp restricted to your IP).
-- `docker/` — the derper container build + its runtime compose file.
-- `.github/workflows/` — builds and publishes the image to GHCR on push.
+  The startup script clones this repo to `/opt/tailwag-derper` and runs
+  `docker compose pull && up -d` in `docker/` **on every boot**.
+- `docker/` — derper image build, the compose stack (derper + tailcat), and
+  `.env`, the single place versions and the relay hostname are pinned.
+- `update.sh` — bumps the pins in `docker/.env` to the latest upstream releases.
+- `.github/workflows/build-derper.yml` — builds derper at the pinned tailscale
+  version and pushes `ghcr.io/moquito64/tailwag-derper:<version>` (+ `latest`).
+- `.github/workflows/check-updates.yml` — weekly; opens a "Bump tailcat /
+  derper versions" PR when upstream has new releases.
 
-## One-time setup, in order
+## Updating
 
-1. **New GCP project.** Don't reuse an existing one — keep this fully
-   separate from anything else you run.
-2. **Push this repo to GitHub** (e.g. `moquito64/tailwag-derper`), let the
-   Actions workflow run once, then mark the resulting package **public**
-   in the repo's Package settings (Settings → Packages → tailwag-derper →
-   Change visibility). The VM's anonymous `docker pull` needs this.
-3. **DNS.** After `terraform apply` prints `derper_ip`, point
-   `wag.wolfandcrow.tech` (or whatever hostname you want) at it — A record,
-   and AAAA too if the VM ever gets a v6 address. Update `--hostname` in
-   `docker/docker-compose.yml` to match before the container starts, since
-   that's what LetsEncrypt validates against.
-4. `cd terraform && terraform init && terraform apply` — you'll be prompted
-   for `project_id`, `ssh_source_ranges`, and `repo_url`.
-5. Confirm: `curl -v https://wag.wolfandcrow.tech/derp/probe` should return
-   200 once the cert issues (can take a minute or two on first boot).
+1. Merge the weekly bump PR (or run `./update.sh` and push). Read the tailcat
+   CHANGELOG first — upstream makes no CLI/API/wire-format stability promise.
+2. Wait for the build workflow to finish (the compose file pulls the
+   version-tagged derper image, which doesn't exist until CI pushes it).
+3. On the VM: `sudo /opt/tailwag-derper/docker/deploy.sh` (or just reboot).
+4. Bump `tailwag` on the nodes (wart, ...) and the client to the same tailcat
+   version: `GOTOOLCHAIN=auto go install github.com/tailscale/tailcat/cmd/tailcat@<version>`.
 
-## Baking this into a tailwag token
+Rollback: revert the `.env` commit, push, wait for CI if derper changed, deploy.
 
-Once it's up, pin it into a saved key so the token is self-contained (no
-DERP map fetch at connect time):
+## Fresh VM, in order
+
+1. **New GCP project**, separate from anything else.
+2. Push this repo; let the build workflow run; keep the GHCR package **public**
+   (the VM pulls anonymously).
+3. `cd terraform && tofu init && tofu apply` (prompts for `project_id`,
+   `ssh_source_ranges`, `repo_url`). Point `wag.penwulf.com`'s A record at the
+   printed `derper_ip`.
+4. `curl -v https://wag.penwulf.com/derp/probe` returns 200 once the cert issues.
+5. Create the VM's own tailcat key: `sudo /opt/tailwag-derper/docker/init-key.sh`.
+   Get its address later with `sudo docker logs tailcat | grep listening`.
+
+Note: `metadata_startup_script` changes force VM replacement in the google
+provider — prefer changing what the script runs (this repo) over the script.
+
+## Baking this relay into a tailwag node key
 
 ```
-tailwag genkey --region=wag.wolfandcrow.tech
+tailwag genkey --key=default --region=wag.penwulf.com
 ```
-The hostname form of `--region` already fully embeds this relay's node
-info in the token. Don't combine it with `--embed-derp-map` — that flag
-assumes a numeric DERP-map region ID and panics on a hostname region.
 
-That gives you a `tc...` token embedding this relay's DERP node info
-directly — the thing to hand to tailwag clients on kyner/hector/merlin/wart.
+The hostname form of `--region` fully embeds this relay's node info in the
+address, so clients need no DERP map. Don't combine it with
+`--embed-derp-map` (assumes a numeric region ID and panics on a hostname).
+Changing `DERP_HOSTNAME` breaks every key made for the old name: the relay
+only gets a certificate for one hostname, so each node needs a re-key and a
+new DNS TXT record.
 
-## Not done yet
+## Notes
 
-- `--verify-clients=false` is deliberate for now (no local tailscaled to
-  check against) — token possession via `--allow=nodekey:...` on each
-  tailwag server is the actual gate, not this relay.
-- No mesh key / `mesh.go` config — single node, nothing to mesh with yet.
-- No monitoring wired in (no Beszel agent here on purpose — see the
-  Camelot-independence note above). A simple external uptime check
-  (something that isn't Uptime Kuma on your own fleet) is worth adding.
+- `--verify-clients=false` is deliberate: tailcat peers aren't tailnet nodes.
+  `--allow=nodekey:...` on each tailwag server is the actual gate.
+- No mesh key — single node.
+- Uptime Kuma checks `https://wag.penwulf.com/derp/probe`.

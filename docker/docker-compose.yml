@@ -1,25 +1,44 @@
+# Project name is fixed so the named volumes (Let's Encrypt cache, derper.key,
+# tailcat server key) survive re-clones and directory moves.
+name: tailcat
+
 services:
   derper:
-    image: ghcr.io/moquito64/tailwag-derper:latest
-    container_name: tailwag-derper
+    image: ghcr.io/moquito64/tailwag-derper:${TAILSCALE_VERSION}
+    container_name: derper
     restart: unless-stopped
-    # host networking: derper/STUN want the real client source IP:port,
-    # and it needs to bind 80/443/3478 itself without Docker's NAT layer
-    # in the way. Fine here since this VM does nothing else.
+    # host networking: derper/STUN want the real client source IP:port and
+    # bind 80/443/3478 themselves. Fine here since this VM does nothing else.
     network_mode: host
     volumes:
-      - certs:/var/lib/derper-certs
+      - derper-state:/var/lib/derper
     command:
-      - --hostname=wag.wolfandcrow.tech   # point this DNS name's A/AAAA at the GCP static IP
+      - --hostname=${DERP_HOSTNAME}        # A record -> the GCP static IP; Let's Encrypt validates this
       - --certmode=letsencrypt
-      - --certdir=/var/lib/derper-certs
-      - --c=/var/lib/derper-certs/derper.key
+      - --certdir=/var/lib/derper/certs
+      - --c=/var/lib/derper/derper.key     # persisted, or it regenerates on every recreate
       - --a=:443
       - --http-port=80
       - --stun-port=3478
       - --stun=true
       - --derp=true
-      - --verify-clients=false            # no local tailscaled here to verify against; token possession is the gate
+      # tailcat peers aren't tailnet nodes, so there's nothing to verify against;
+      # the gate is --allow=nodekey:... on each tailwag server. DERP only sees
+      # WireGuard-encrypted packets.
+      - --verify-clients=false
+
+  # The relay VM's own break-glass: forwards this VM's real sshd (normal SSH
+  # auth still applies) through a tailcat tunnel rendezvousing on our relay.
+  tailcat:
+    image: ghcr.io/tailscale/tailcat:${TAILCAT_VERSION}
+    container_name: tailcat
+    restart: unless-stopped
+    depends_on: [derper]
+    network_mode: host                     # so "serve 22" reaches localhost:22
+    volumes:
+      - tailcat-state:/home/nonroot        # saved key (~/.config/tailcat) + derpmap cache
+    command: ["serve", "22"]               # uses saved key "default" from init-key.sh
 
 volumes:
-  certs:
+  derper-state:
+  tailcat-state:

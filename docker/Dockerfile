@@ -1,21 +1,19 @@
 # tailwag-derper — container build of Tailscale's DERP relay
 # (cmd/derper, from the tailscale.com module), used as tailwag's
 # break-glass rendezvous/relay node. BSD-3-Clause upstream.
+# Upstream publishes no derper image or packages, so we build the pinned tag.
 
-FROM golang:1.25-bookworm AS build
-WORKDIR /src
+FROM golang:1.27-bookworm AS build
+# Version comes from docker/.env via CI (--build-arg); no default on purpose,
+# so a rebuild is always a deliberate diff, never whatever @latest resolves to.
+ARG TAILSCALE_VERSION
+# GOTOOLCHAIN=auto: tailscale.com bumps its minimum Go without warning.
 ENV CGO_ENABLED=0 GOFLAGS=-trimpath GOTOOLCHAIN=auto
-# Pinned so a rebuild is a deliberate diff, not whatever @latest resolves to.
-# derper makes no CLI/version stability promise upstream, same as tailcat.
-RUN go install tailscale.com/cmd/derper@v1.102.4
+RUN test -n "$TAILSCALE_VERSION" && go install tailscale.com/cmd/derper@${TAILSCALE_VERSION}
 
-# distroless/base, NOT -nonroot: derper binds 80/443 itself, which
-# means either running as root in-container or granting
-# CAP_NET_BIND_SERVICE explicitly. Root-in-container is the simpler
-# choice here — the container boundary (plus this being a single-
-# purpose VM with nothing else on it) is the isolation that matters.
+# distroless/base, NOT -nonroot: derper binds 80/443 itself. Root-in-container
+# on a single-purpose VM is the simpler choice.
 FROM gcr.io/distroless/base-debian12
 COPY --from=build /go/bin/derper /derper
-VOLUME ["/var/lib/derper-certs"]
 EXPOSE 443/tcp 80/tcp 3478/udp
 ENTRYPOINT ["/derper"]
